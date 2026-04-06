@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nota de Entrega {{ nota.numero }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            color: #333;
+            line-height: 1.3;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #43A29E;
+            padding-bottom: 10px;
+        }
+        
+        .header-banner {
+            width: 100%;
+            max-width: 600px;
+            max-height: 150px;
+            display: block;
+            margin: 0 auto 15px auto;
+        }
+        
+        .header-logo {
+            max-width: 50px !important;
+            max-height: 50px !important;
+            float: left;
+        }
+        
+        .header-content {
+            text-align: center;
+        }
+        
+        .empresa-nombre {
+            font-size: 20px;
+            font-weight: bold;
+            color: #43A29E;
+            margin-bottom: 3px;
+        }
+        
+        .empresa-info {
+            font-size: 10px;
+            color: #666;
+        }
+        
+        .nota-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #2B3744;
+        }
+        
+        .info-section {
+            margin-bottom: 15px;
+        }
+        
+        .info-row {
+            margin-bottom: 5px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #666;
+            display: inline-block;
+            width: 100px;
+        }
+        
+        .info-value {
+            display: inline-block;
+        }
+        
+        .estado {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .estado-pendiente {
+            background-color: #FEF3C7;
+            color: #92400E;
+        }
+        
+        .estado-aprobada {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+        
+        .estado-cancelada {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        
+        th {
+            background-color: #43A29E;
+            color: white;
+            padding: 6px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 10px;
+        }
+        
+        td {
+            padding: 6px;
+            border-bottom: 1px solid #E5E7EB;
+            font-size: 10px;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #F9FAFB;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .totals-section {
+            margin-top: 15px;
+            text-align: right;
+        }
+        
+        .total-row {
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        
+        .total-final {
+            font-size: 14px;
+            font-weight: bold;
+            color: #43A29E;
+            border-top: 2px solid #43A29E;
+            padding-top: 8px;
+        }
+        
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 9px;
+            color: #999;
+            border-top: 1px solid #E5E7EB;
+            padding-top: 8px;
+        }
+        
+        .observaciones {
+            margin-top: 15px;
+            padding: 8px;
+            background-color: #F9FAFB;
+            border-radius: 4px;
+            font-size: 10px;
+        }
+        
+        .observaciones-title {
+            font-weight: bold;
+            margin-bottom: 3px;
+            color: #666;
+        }
+        
+        .col-num { width: 30px; }
+        .col-cod { width: 80px; }
+        .col-desc { }
+        .col-cant { width: 60px; }
+        .col-precio { width: 80px; }
+        .col-total { width: 90px; }
+    </style>
+</head>
+<body>
+    <!-- Header con logo y banner -->
+    <table style="width: 100%; margin-bottom: 10px;">
+        <tr>
+            <!-- Logo a la izquierda (30%) -->
+            <td style="width: 30%; vertical-align: middle;">
+                <img src="./media/pdf/logo.png" alt="Logo" style="width: 100px; height: 100px; object-fit: contain;" />
+            </td>
+            
+            <!-- Banner a la derecha (70%) -->
+            <td style="width: 100%; vertical-align: middle; text-align: right;">
+                <img src="./media/pdf/banner.png" alt="Banner" style="width: 1200px; height: 250px; object-fit: contain;" />
+            </td>
+        </tr>
+    </table>
+    
+    <!-- Título centrado -->
+    <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #43A29E; padding-bottom: 10px;">
+        <div class="nota-title">NOTA DE ENTREGA</div>
+    </div>
+    
+    <div class="info-section">
+        <div class="info-row">
+            <span class="info-label">Número:</span>
+            <span class="info-value">{{ nota.numero }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Fecha:</span>
+            <span class="info-value">{{ nota.fecha_creacion|date:"d/m/Y" }}</span>
+        </div>
+    </div>
+    
+    <div class="info-section">
+        <div class="info-row">
+            <span class="info-label">Cliente:</span>
+            <span class="info-value">
+                {% if nota.cliente %}
+                    {{ nota.cliente.nombre }}
+                {% else %}
+                    {{ nota.cliente_nombre|default:"—" }}
+                {% endif %}
+            </span>
+        </div>
+        {% if nota.cliente_cedula %}
+        <div class="info-row">
+            <span class="info-label">Cédula/RIF:</span>
+            <span class="info-value">{{ nota.cliente_cedula }}</span>
+        </div>
+        {% endif %}
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th class="col-num">#</th>
+                <th class="col-cod">Código</th>
+                <th class="col-desc">Descripción</th>
+                <th class="col-cant text-right">Cantidad</th>
+                <th class="col-precio text-right">Precio Unit.</th>
+                <th class="col-total text-right">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ item.stock.codigo }}</td>
+                <td>{{ item.stock.descripcion }}</td>
+                <td class="text-right">{{ item.cantidad }}</td>
+                <td class="text-right">${{ item.precio_unitario_dolares|floatformat:2 }}</td>
+                <td class="text-right">${{ item.total_linea|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div class="totals-section">
+        <div class="total-row">
+            <strong>Subtotal: ${{ subtotal|floatformat:2 }}</strong>
+        </div>
+        <div class="total-row total-final">
+            <strong>TOTAL: ${{ subtotal|floatformat:2 }}</strong>
+        </div>
+    </div>
+    
+
+    {% endif %}
+    
+    <div class="footer">
+        <p>Documento generado el {{ fecha_generacion }}</p>
+        <p>{{ empresa_nombre }} - Sistema de Gestión</p>
+    </div>
+</body>
+</html>

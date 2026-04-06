@@ -1,0 +1,512 @@
+Aquí va un README en modo “manual para el front” 🧩, paso a paso, con ejemplo completo.
+
+---
+
+# 🧾 API de Presupuestos (Reportes + APUs)
+
+Este documento explica **cómo consumir la API** para crear un **reporte (presupuesto)** con uno o varios **APUs**, incluyendo sus materiales, herramientas, mano de obra y logística.
+
+> Nota: asumo que todas las rutas están bajo un prefijo tipo `/api/`. Si tu proyecto usa otro (ej. `/api/costos/`), solo adáptalo.
+
+---
+
+## 🧱 Modelos principales (vista rápida)
+
+* **Cliente**
+* **Reporte**
+
+  * Campos clave: `id`, `n_presupuesto`, `cliente`, `descripcion`, `fecha_creacion`
+* **APU**
+
+  * Campos clave: `id`, `reporte`, `numero`, `rendimiento`, `descripcion`, `unidad`, `cantidad`, `depreciacion`, `total_apu`, etc.
+* **APUMaterial**
+* **APUHerramienta**
+* **APUManoObra**
+* **APULogistica**
+
+---
+
+## 🛰 Flujo general para crear un reporte
+
+1. Crear un **cliente** (si no existe).
+2. (Opcional) Configurar el **punto de inicio** de los presupuestos (`ReporteConfig`).
+3. Crear el **reporte**.
+4. Crear uno o varios **APUs** asociados al reporte.
+5. Para cada APU, agregar:
+
+   * Materiales
+   * Herramientas
+   * Mano de obra
+   * Logística
+6. Consultar el **reporte completo** (con sus APUs y detalles).
+
+---
+
+## 1️⃣ Crear un cliente
+
+**Endpoint**
+
+```http
+POST /api/clientes/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "nombre": "Constructora El Buen Martillo",
+  "rif": "J-12345678-9",
+  "encargado": "Juan Pérez",
+  "telefono": "+58-414-1234567",
+  "direccion": "Av. Principal, Galpón 3, Zona Industrial",
+  "correo_electronico": "jperez@buenmartillo.com"
+}
+```
+
+**Respuesta (ejemplo simplificado)**
+
+```json
+{
+  "id": 1,
+  "nombre": "Constructora El Buen Martillo",
+  "rif": "J-12345678-9",
+  "encargado": "Juan Pérez",
+  "telefono": "+58-414-1234567",
+  "direccion": "Av. Principal, Galpón 3, Zona Industrial",
+  "correo_electronico": "jperez@buenmartillo.com",
+  "reportes": []
+}
+```
+
+Guarda el `id` del cliente (por ejemplo `1`).
+
+---
+
+## 2️⃣ (Opcional) Configurar el punto de inicio de presupuestos
+
+Si quieres que los presupuestos empiecen en un número específico (por ejemplo 1000):
+
+**Endpoint**
+
+```http
+POST /api/reportes/config/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "punto_inicio": 1000
+}
+```
+
+A partir de allí, el primer `Reporte` será `n_presupuesto = "1000"`, el siguiente `"1001"`, etc.
+
+---
+
+## 3️⃣ Crear un reporte
+
+**Endpoint**
+
+```http
+POST /api/reportes/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "cliente": 1,
+  "descripcion": "Mantenimiento general de galpón y adecuación de área de carga"
+}
+```
+
+> ⚠️ No envíes `n_presupuesto` ni `fecha_creacion`: se calculan en el backend.
+
+**Respuesta (ejemplo)**
+
+```json
+{
+  "id": 10,
+  "n_presupuesto": "1000",
+  "cliente": 1,
+  "cliente_nombre": "Constructora El Buen Martillo",
+  "descripcion": "Mantenimiento general de galpón y adecuación de área de carga",
+  "fecha_creacion": "2025-11-14T20:30:00Z",
+  "apus": []
+}
+```
+
+Guarda el `id` del reporte (en este ejemplo, `10`).
+
+---
+
+## 4️⃣ Crear un APU para ese reporte
+
+**Endpoint**
+
+```http
+POST /api/reportes/10/apus/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "rendimiento": 0.85,
+  "descripcion": "Pintura de muros interiores",
+  "unidad": "m2",
+  "cantidad": 150,
+  "depreciacion": 2.5
+}
+```
+
+Campos importantes:
+
+* `rendimiento`: decimal entre `0` y `1`.
+* `descripcion`: texto que describe el APU.
+* `unidad`: unidad de medida (ej. `"m2"`, `"ml"`, `"UND"`).
+* `cantidad`: cantidad total considerada.
+* `depreciacion`: valor genérico para el APU (puede usarse como factor extra si lo necesitas luego).
+
+**Respuesta (ejemplo)**
+
+```json
+{
+  "id": 5,
+  "reporte": 10,
+  "numero": 1,
+  "rendimiento": "0.850",
+  "descripcion": "Pintura de muros interiores",
+  "unidad": "m2",
+  "cantidad": "150.00",
+  "depreciacion": "2.50",
+  "precio_unitario": "0.00",
+  "total_base": "0.00",
+  "total_materiales": "0.00",
+  "total_herramientas": "0.00",
+  "total_mano_obra": "0.00",
+  "total_logistica": "0.00",
+  "bono_alimenticio": "0.00",
+  "prestaciones_sociales": "0.00",
+  "costo_por_unidad": "0.00",
+  "costo_directo_por_unidad": "0.00",
+  "gastos_administrativos_15": "0.00",
+  "subtotal": "0.00",
+  "utilidad_15": "0.00",
+  "total_apu": "0.00",
+  "fecha_creacion": "2025-11-14T20:35:00Z",
+  "materiales": [],
+  "herramientas": [],
+  "manos_obra": [],
+  "logisticas": []
+}
+```
+
+Guarda el `id` del APU (en este ejemplo, `5`).
+
+---
+
+## 5️⃣ Agregar MATERIALES al APU
+
+Los materiales se crean **por separado** para cada APU.
+
+**Endpoint**
+
+```http
+POST /api/apus/5/materiales/
+Content-Type: application/json
+```
+
+### Caso 1: usando `stock_id`
+
+```json
+{
+  "stock_id": 12,
+  "cantidad": 200,
+  "desperdicio": 5
+}
+```
+
+### Caso 2: usando `consumible_id`
+
+```json
+{
+  "consumible_id": 7,
+  "cantidad": 3,
+  "desperdicio": 0
+}
+```
+
+> El backend:
+>
+> * lee `stock` o `consumible`,
+> * llena `descripcion`, `unidad`,
+> * decide `precio_unitario` usando `mts_ml_m2` o `utilidad_15`,
+> * calcula `total_material`,
+> * actualiza automáticamente los totales del APU (`recalcular_totales()`).
+
+**Respuesta (ejemplo)**
+
+```json
+{
+  "id": 21,
+  "apu": 5,
+  "stock": {
+    "id": 12,
+    "descripcion": "Pintura blanca mate 20L",
+    "pza": "TIN",
+    "mts_ml_m2": "2.50",
+    "utilidad_15": "2.00"
+  },
+  "stock_id": 12,
+  "consumible": null,
+  "consumible_id": null,
+  "descripcion": "Pintura blanca mate 20L",
+  "unidad": "TIN",
+  "cantidad": "200.00",
+  "desperdicio": "5.00",
+  "precio_unitario": "2.50",
+  "total_material": "500.00"
+}
+```
+
+---
+
+## 6️⃣ Agregar HERRAMIENTAS al APU
+
+**Endpoint**
+
+```http
+POST /api/apus/5/herramientas/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "descripcion": "Compresor y pistola de pintura",
+  "unidad": "jornada",
+  "cantidad": 3,
+  "depreciacion_hora": 10,
+  "precio_unitario": 25
+}
+```
+
+> El backend calcula `total_herramienta = precio_unitario * cantidad`
+> y luego `apu.recalcular_totales()`.
+
+**Respuesta (ejemplo)**
+
+```json
+{
+  "id": 8,
+  "apu": 5,
+  "descripcion": "Compresor y pistola de pintura",
+  "unidad": "jornada",
+  "cantidad": "3.00",
+  "depreciacion_hora": "10.00",
+  "precio_unitario": "25.00",
+  "total_herramienta": "75.00"
+}
+```
+
+---
+
+## 7️⃣ Agregar MANO DE OBRA al APU
+
+**Endpoint**
+
+```http
+POST /api/apus/5/mano-obra/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "descripcion": "Pintor calificado",
+  "unidad": "jornada",
+  "cantidad": 2,
+  "precio_unitario": 30
+}
+```
+
+> El backend calcula `total_mano_obra = precio_unitario * cantidad`
+> y vuelve a llamar `apu.recalcular_totales()`.
+
+**Respuesta (ejemplo)**
+
+```json
+{
+  "id": 4,
+  "apu": 5,
+  "descripcion": "Pintor calificado",
+  "unidad": "jornada",
+  "cantidad": "2.00",
+  "precio_unitario": "30.00",
+  "total_mano_obra": "60.00"
+}
+```
+
+> Si agregas más trabajadores (otros registros de mano de obra), se suman y se usan para:
+>
+> * `prestaciones_sociales = total_mano_obra * 200`
+> * `bono_alimenticio = 15 * total_trabajadores`
+> * etc.
+
+---
+
+## 8️⃣ Agregar LOGÍSTICA al APU
+
+**Endpoint**
+
+```http
+POST /api/apus/5/logistica/
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "descripcion": "Transporte de materiales",
+  "unidad": "viaje",
+  "cantidad": 2,
+  "precio_unitario": 40
+}
+```
+
+> El backend calcula `total_logistica = precio_unitario * cantidad`
+> y recalcula todos los totales del APU.
+
+**Respuesta (ejemplo)**
+
+```json
+{
+  "id": 3,
+  "apu": 5,
+  "descripcion": "Transporte de materiales",
+  "unidad": "viaje",
+  "cantidad": "2.00",
+  "precio_unitario": "40.00",
+  "total_logistica": "80.00"
+}
+```
+
+---
+
+## 9️⃣ Consultar el APU completo (con todos sus cálculos)
+
+**Endpoint**
+
+```http
+GET /api/apus/5/
+```
+
+**Respuesta (ejemplo resumido)**
+
+```json
+{
+  "id": 5,
+  "reporte": 10,
+  "numero": 1,
+  "rendimiento": "0.850",
+  "descripcion": "Pintura de muros interiores",
+  "unidad": "m2",
+  "cantidad": "150.00",
+  "depreciacion": "2.50",
+  "precio_unitario": "8.50",
+  "total_base": "500.00",
+  "total_materiales": "500.00",
+  "total_herramientas": "75.00",
+  "total_mano_obra": "60.00",
+  "total_logistica": "80.00",
+  "bono_alimenticio": "30.00",
+  "prestaciones_sociales": "12000.00",
+  "costo_por_unidad": "14117.65",
+  "costo_directo_por_unidad": "14692.65",
+  "gastos_administrativos_15": "2203.90",
+  "subtotal": "16896.55",
+  "utilidad_15": "2534.48",
+  "total_apu": "19431.03",
+  "fecha_creacion": "2025-11-14T20:35:00Z",
+  "materiales": [ ... ],
+  "herramientas": [ ... ],
+  "manos_obra": [ ... ],
+  "logisticas": [ ... ]
+}
+```
+
+> Todos esos campos se recalculan **automáticamente** cada vez que agregas/actualizas/eliminás materiales, herramientas, mano de obra o logística.
+
+---
+
+## 🔟 Consultar el reporte completo con sus APUs
+
+**Endpoint**
+
+```http
+GET /api/reportes/10/
+```
+
+**Respuesta (ejemplo resumido)**
+
+```json
+{
+  "id": 10,
+  "n_presupuesto": "1000",
+  "cliente": 1,
+  "cliente_nombre": "Constructora El Buen Martillo",
+  "descripcion": "Mantenimiento general de galpón y adecuación de área de carga",
+  "fecha_creacion": "2025-11-14T20:30:00Z",
+  "apus": [
+    {
+      "id": 5,
+      "numero": 1,
+      "descripcion": "Pintura de muros interiores",
+      "unidad": "m2",
+      "cantidad": "150.00",
+      "total_apu": "19431.03",
+      "materiales": [ ... ],
+      "herramientas": [ ... ],
+      "manos_obra": [ ... ],
+      "logisticas": [ ... ]
+    }
+  ]
+}
+```
+
+---
+
+## 📌 Resumen rápido de los cuerpos (body) por endpoint
+
+* **POST `/clientes/`**
+
+  * Enviar: datos del cliente.
+* **POST `/reportes/`**
+
+  * Enviar: `{ "cliente": <id>, "descripcion": "..." }`
+* **POST `/reportes/<reporte_id>/apus/`**
+
+  * Enviar: `{ "rendimiento", "descripcion", "unidad", "cantidad", "depreciacion" }`
+* **POST `/apus/<apu_id>/materiales/`**
+
+  * Enviar: `{ "stock_id" o "consumible_id", "cantidad", "desperdicio" }`
+* **POST `/apus/<apu_id>/herramientas/`**
+
+  * Enviar: `{ "descripcion", "unidad", "cantidad", "depreciacion_hora", "precio_unitario" }`
+* **POST `/apus/<apu_id>/mano-obra/`**
+
+  * Enviar: `{ "descripcion", "unidad", "cantidad", "precio_unitario" }`
+* **POST `/apus/<apu_id>/logistica/`**
+
+  * Enviar: `{ "descripcion", "unidad", "cantidad", "precio_unitario" }`
+
+Si quieres, en el siguiente mensaje podemos hacer un **JSON “guía”** para usar directamente desde Postman o desde tu frontend (tipo paso 1, 2, 3 con IDs encadenados).
