@@ -107,12 +107,33 @@ class NotaEntregaItem(models.Model):
     """
     Item individual dentro de una nota de entrega
     """
-    COSTO_CHOICES = [
-        ('costo', 'Costo Base'),
-        ('costo_1', 'Costo 1 (10%)'),
-        ('costo_2', 'Costo 2 (15%)'),
-        ('costo_3', 'Costo 3 (25%)'),
-    ]
+    
+    @staticmethod
+    def get_costo_choices():
+        """Obtiene los choices dinámicos basados en los porcentajes de utilidad de la Taza"""
+        from inventario.models import Taza_pesos_dolares
+        taza = Taza_pesos_dolares.objects.order_by('-id').first()
+        
+        choices = [('costo', 'Costo Base')]
+        
+        if taza:
+            p1 = float(taza.utilidad_porcentaje_1) if taza.utilidad_porcentaje_1 else 0
+            p2 = float(taza.utilidad_porcentaje_2) if taza.utilidad_porcentaje_2 else 0
+            p3 = float(taza.utilidad_porcentaje_3) if taza.utilidad_porcentaje_3 else 0
+            
+            if p1 > 0:
+                choices.append(('costo_1', f'Costo 1 ({p1:.0f}%)'))
+            if p2 > 0:
+                choices.append(('costo_2', f'Costo 2 ({p2:.0f}%)'))
+            if p3 > 0:
+                choices.append(('costo_3', f'Costo 3 ({p3:.0f}%)'))
+        
+        if len(choices) == 1:
+            choices.append(('costo_1', 'Costo 1'))
+            choices.append(('costo_2', 'Costo 2'))
+            choices.append(('costo_3', 'Costo 3'))
+        
+        return choices
 
     nota = models.ForeignKey(
         NotaEntrega,
@@ -133,9 +154,20 @@ class NotaEntregaItem(models.Model):
     cantidad = models.IntegerField(help_text="Cantidad a entregar")
     cantidad_bloqueada = models.IntegerField(default=0, help_text="Cantidad bloqueada en inventario")
     
+    TIPO_VENTA_CHOICES = [
+        ('cantidad', 'Por Cantidad'),
+        ('mts_ml_m2', 'Por MTS/ML/M²'),
+    ]
+    
+    tipo_venta = models.CharField(
+        max_length=20,
+        choices=TIPO_VENTA_CHOICES,
+        default='cantidad',
+        help_text="Cómo se vende: por cantidad o por MTS/ML/M²"
+    )
+    
     cual_costo = models.CharField(
         max_length=20,
-        choices=COSTO_CHOICES,
         default='costo',
         help_text="Cuál precio usar para el cálculo"
     )
@@ -147,6 +179,13 @@ class NotaEntregaItem(models.Model):
         help_text="Precio unitario en dólares basado en cual_costo"
     )
     
+    relacion_mts_ml_m2 = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        default=1,
+        help_text="Relación MTS/ML/M² del stock"
+    )
+    
     class Meta:
         verbose_name = "Item de Nota de Entrega"
         verbose_name_plural = "Items de Notas de Entrega"
@@ -154,27 +193,60 @@ class NotaEntregaItem(models.Model):
     def __str__(self):
         return f"{self.stock.codigo} - {self.cantidad} unidades"
 
-    def get_precio(self):
-        """Obtener el precio según cual_costo"""
+    def get_precio_base(self):
+        """Obtener el precio base según cual_costo (sin importar tipo_venta)"""
         sp = self.stock_proveedor
         if self.cual_costo == 'costo':
-            return sp.costo or 0
+            return float(sp.costo or 0)
         elif self.cual_costo == 'costo_1':
-            return sp.costo_1 or 0
+            return float(sp.costo_1 or 0)
         elif self.cual_costo == 'costo_2':
-            return sp.costo_2 or 0
+            return float(sp.costo_2 or 0)
         elif self.cual_costo == 'costo_3':
-            return sp.costo_3 or 0
+            return float(sp.costo_3 or 0)
         return 0
+    
+    def get_precio(self):
+        """
+        Obtener el precio según tipo_venta y cual_costo.
+        Si tipo_venta es 'mts_ml_m2', el precio se divide entre la relación.
+        """
+        precio_base = self.get_precio_base()
+        if self.tipo_venta == 'mts_ml_m2' and self.relacion_mts_ml_m2 and self.relacion_mts_ml_m2 > 0:
+            return precio_base / float(self.relacion_mts_ml_m2)
+        return precio_base
+    
+    def get_cantidad_mostrar(self):
+        """
+        Obtener la cantidad a mostrar según tipo_venta.
+        Si tipo_venta es 'mts_ml_m2', retorna cantidad * relacion.
+        """
+        if self.tipo_venta == 'mts_ml_m2' and self.relacion_mts_ml_m2 and self.relacion_mts_ml_m2 > 0:
+            return float(self.cantidad) * float(self.relacion_mts_ml_m2)
+        return self.cantidad
+    
+    def get_unidad_mostrar(self):
+        """Obtener la unidad a mostrar según tipo_venta"""
+        if self.tipo_venta == 'mts_ml_m2':
+            if self.stock.pza:
+                return self.stock.pza
+            return "MTS"
+        return "UND"
     
     @property
     def total_linea(self):
-        """Calcula el total de esta línea (cantidad * precio)"""
-        return float(self.precio_unitario_dolares or 0) * self.cantidad
+        """
+        Calcula el total de esta línea.
+        El total es el mismo sin importar el tipo de venta.
+        """
+        return float(self.cantidad) * self.get_precio_base()
 
     def save(self, *args, **kwargs):
-        # Establecer precio unitario al guardar
-        self.precio_unitario_dolares = self.get_precio()
+        # Obtener la relación MTS/ML/M² del stock
+        if self.stock and self.stock.factor_conversion:
+            self.relacion_mts_ml_m2 = self.stock.factor_conversion
+        elif not self.relacion_mts_ml_m2 or self.relacion_mts_ml_m2 == 0:
+            self.relacion_mts_ml_m2 = 1
         
         # Si es nuevo y la nota está pendiente, bloquear cantidad
         if not self.pk and self.nota.estado == 'pendiente':

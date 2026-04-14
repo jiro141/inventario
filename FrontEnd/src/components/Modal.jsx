@@ -8,9 +8,9 @@ const Modal = ({ isOpen, onClose, title, children, width, height }) => {
   const modalHeight = height ? height : "";
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[9998] flex items-center justify-center">
       <div
-        className={`bg-white w-full ${modalWidth} rounded-lg shadow-lg relative ${modalHeight}`}
+        className={`bg-white w-full ${modalWidth} rounded-lg shadow-lg relative ${modalHeight} z-[9999]`}
       >
         {/* Encabezado */}
         <div className="flex justify-between items-center px-6 py-4 bg-[#43A29E] rounded-t-lg">

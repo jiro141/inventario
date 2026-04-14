@@ -17,3 +17,10 @@
   -ms-overflow-style: none; /* IE y Edge */
   scrollbar-width: none;    /* Firefox */
 }
+
+/* Estilos para el menú portal de react-select */
+.proveedor-select ~ div,
+.costo-select ~ div,
+[class*="menu-portal"] {
+  z-index: 99999 !important;
+}

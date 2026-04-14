@@ -4,6 +4,7 @@ import Select from "react-select";
 import { FaSearch } from "react-icons/fa";
 import { toast } from "react-toastify";
 import { getStock } from "../../api/controllers/Inventario";
+import { getTaza } from "../../api/controllers/Inventario";
 
 // Modal para seleccionar items de ferretería - una sola tabla con cantidad para seleccionar
 const ItemSelectionModal = ({
@@ -15,16 +16,37 @@ const ItemSelectionModal = ({
   const [loading, setLoading] = useState(false);
   const [stockData, setStockData] = useState([]);
   const [search, setSearch] = useState("");
+  const [utilidadPorcentajes, setUtilidadPorcentajes] = useState({
+    utilidad_porcentaje_1: 0,
+    utilidad_porcentaje_2: 0,
+    utilidad_porcentaje_3: 0,
+  });
 
   // Items con su configuración (cada item tiene su propio estado)
   const [itemsConfig, setItemsConfig] = useState({});
 
-  // Cargar stock al abrir
+  // Cargar stock y taza al abrir
   useEffect(() => {
     if (isOpen) {
       cargarStock();
+      cargarTaza();
     }
   }, [isOpen]);
+
+  const cargarTaza = async () => {
+    try {
+      const taza = await getTaza();
+      if (taza) {
+        setUtilidadPorcentajes({
+          utilidad_porcentaje_1: parseFloat(taza.utilidad_porcentaje_1) || 0,
+          utilidad_porcentaje_2: parseFloat(taza.utilidad_porcentaje_2) || 0,
+          utilidad_porcentaje_3: parseFloat(taza.utilidad_porcentaje_3) || 0,
+        });
+      }
+    } catch (err) {
+      console.error("Error cargando taza:", err);
+    }
+  };
 
   const cargarStock = async () => {
     setLoading(true);
@@ -43,6 +65,7 @@ const ItemSelectionModal = ({
             cual_costo: existingItem.cual_costo,
             cantidad: existingItem.cantidad,
             precio_unitario_dolares: existingItem.precio_unitario_dolares,
+            tipo_venta: existingItem.tipo_venta || 'cantidad',
           };
         } else if (stock.proveedores && stock.proveedores.length > 0) {
           // Valores por defecto
@@ -51,6 +74,7 @@ const ItemSelectionModal = ({
             cual_costo: "costo_1",
             cantidad: 0,
             precio_unitario_dolares: stock.proveedores[0]?.costo_1 || 0,
+            tipo_venta: 'cantidad',
           };
         }
       });
@@ -86,6 +110,25 @@ const ItemSelectionModal = ({
         }
       }
 
+      // Si cambió el tipo de venta, recalcular precio unitario para mostrar
+      if (field === "tipo_venta") {
+        const prov = stock.proveedores?.find(
+          (p) => p.id === itemConfig.stock_proveedor,
+        );
+        if (prov) {
+          const precioBase = prov[itemConfig.cual_costo] || prov.costo || 0;
+          if (value === 'mts_ml_m2' && stock.factor_conversion && stock.factor_conversion > 0) {
+            itemConfig.precio_unitario_dolares = precioBase / stock.factor_conversion;
+            // Convertir cantidad a equivalente
+            itemConfig.cantidad = itemConfig.cantidad * stock.factor_conversion;
+          } else {
+            itemConfig.precio_unitario_dolares = precioBase;
+            // Restaurar cantidad original
+            itemConfig.cantidad = itemConfig.cantidad / stock.factor_conversion;
+          }
+        }
+      }
+
       return { ...prev, [stockId]: itemConfig };
     });
   };
@@ -97,15 +140,24 @@ const ItemSelectionModal = ({
     stockData.forEach((stock) => {
       const config = itemsConfig[stock.id];
       if (config && config.cantidad > 0 && config.stock_proveedor) {
+        const factor = stock.factor_conversion || 1;
+        // Si es mts_ml_m2, la cantidad ya viene como equivalente, hay que dividirla para obtener la cantidad real
+        const cantidadReal = config.tipo_venta === 'mts_ml_m2' 
+          ? Math.floor(config.cantidad / factor) 
+          : config.cantidad;
+        
         selectedItems.push({
           tempId: Date.now() + stock.id,
           stock: stock.id,
           stock_codigo: stock.codigo,
           stock_descripcion: stock.descripcion,
+          stock_pza: stock.pza,
+          stock_factor_conversion: factor,
           stock_proveedor: config.stock_proveedor,
           cual_costo: config.cual_costo,
-          cantidad: config.cantidad,
+          cantidad: cantidadReal,
           precio_unitario_dolares: config.precio_unitario_dolares,
+          tipo_venta: config.tipo_venta || 'cantidad',
           proveedor_nombre:
             stock.proveedores?.find((p) => p.id === config.stock_proveedor)
               ?.proveedor_nombre || "",
@@ -146,15 +198,25 @@ const ItemSelectionModal = ({
     onClose();
   };
 
-  // Validar cantidad al cambiar - no permitir más que el stock
+  // Validar cantidad al cambiar - no permitir más que el stock (o equivalente)
   const handleCantidadChange = (stockId, value) => {
     const stock = stockData.find((s) => s.id === stockId);
-    let nuevaCantidad = parseInt(value) || 0;
+    const config = itemsConfig[stockId] || {};
+    let nuevaCantidad = parseFloat(value) || 0;
 
-    // Si excede el stock, limitar y mostrar warning
-    if (stock && nuevaCantidad > stock.cantidad) {
-      nuevaCantidad = stock.cantidad;
-      toast.warn(`La cantidad no puede exceder el stock (${stock.cantidad})`);
+    // Si es mts_ml_m2, validar contra el equivalente máximo
+    if (config.tipo_venta === 'mts_ml_m2' && stock.factor_conversion && stock.factor_conversion > 0) {
+      const maxEquivalente = stock.cantidad * stock.factor_conversion;
+      if (nuevaCantidad > maxEquivalente) {
+        nuevaCantidad = maxEquivalente;
+        toast.warn(`El equivalente no puede exceder ${maxEquivalente.toFixed(0)} (stock disponible)`);
+      }
+    } else {
+      // Validar contra el stock normal
+      if (stock && nuevaCantidad > stock.cantidad) {
+        nuevaCantidad = stock.cantidad;
+        toast.warn(`La cantidad no puede exceder el stock (${stock.cantidad})`);
+      }
     }
 
     handleUpdateItem(stockId, "cantidad", nuevaCantidad);
@@ -171,11 +233,30 @@ const ItemSelectionModal = ({
     );
   }, [stockData, search]);
 
-  // Opciones de costo (mostrar porcentajes completos)
-  const costoOptions = [
-    { value: "costo_1", label: "10%" },
-    { value: "costo_2", label: "15%" },
-    { value: "costo_3", label: "25%" },
+  // Opciones de costo dinámicas basadas en los porcentajes de utilidad
+  const costoOptions = useMemo(() => {
+    const options = [];
+    if (utilidadPorcentajes.utilidad_porcentaje_1 > 0) {
+      options.push({ value: "costo_1", label: `${utilidadPorcentajes.utilidad_porcentaje_1}%` });
+    }
+    if (utilidadPorcentajes.utilidad_porcentaje_2 > 0) {
+      options.push({ value: "costo_2", label: `${utilidadPorcentajes.utilidad_porcentaje_2}%` });
+    }
+    if (utilidadPorcentajes.utilidad_porcentaje_3 > 0) {
+      options.push({ value: "costo_3", label: `${utilidadPorcentajes.utilidad_porcentaje_3}%` });
+    }
+    if (options.length === 0) {
+      options.push({ value: "costo_1", label: "Costo 1" });
+      options.push({ value: "costo_2", label: "Costo 2" });
+      options.push({ value: "costo_3", label: "Costo 3" });
+    }
+    return options;
+  }, [utilidadPorcentajes]);
+
+  // Opciones de tipo de venta
+  const tipoVentaOptions = [
+    { value: 'cantidad', label: 'Cantidad' },
+    { value: 'mts_ml_m2', label: 'MTS/ML/M²' },
   ];
 
   // Calcular total de items seleccionados
@@ -220,7 +301,7 @@ const ItemSelectionModal = ({
         </div>
 
         {/* Contenedor de la tabla con overflow controlado */}
-        <div className="border rounded-lg overflow-hidden my-4 pb-10 z-[99]">
+        <div className="border rounded-lg overflow-visible my-4 pb-10 relative">
           <div className="overflow-x-auto min-h-[200px] pb-16">
             <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-[#43A29E] text-white">
@@ -230,13 +311,15 @@ const ItemSelectionModal = ({
                     Descripción
                   </th>
                   <th className="px-3 py-2 text-right min-w-[60px]">Stock</th>
-                  <th className="px-3 py-2 text-left min-w-[150px]">
+                  <th className="px-3 py-2 text-left min-w-[100px]">
                     Proveedor
                   </th>
-                  <th className="px-3 py-2 text-center min-w-[80px]">Costo</th>
-                  <th className="px-3 py-2 text-center min-w-[80px]">
+                  <th className="px-3 py-2 text-center min-w-[60px]">Costo</th>
+                  <th className="px-3 py-2 text-center min-w-[80px]">Tipo Venta</th>
+                  <th className="px-3 py-2 text-center min-w-[60px]">
                     Cantidad
                   </th>
+                  <th className="px-3 py-2 text-center min-w-[80px]">Equivalente</th>
                   <th className="px-3 py-2 text-right min-w-[80px]">Total</th>
                 </tr>
               </thead>
@@ -245,7 +328,7 @@ const ItemSelectionModal = ({
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={9}
                       className="px-3 py-4 text-center text-gray-500"
                     >
                       Cargando...
@@ -254,7 +337,7 @@ const ItemSelectionModal = ({
                 ) : filteredStock.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={9}
                       className="px-3 py-4 text-center text-gray-500"
                     >
                       No hay items disponibles
@@ -265,6 +348,9 @@ const ItemSelectionModal = ({
                     const config = itemsConfig[stock.id] || {};
                     const isSelected = config.cantidad > 0;
                     const sinStock = stock.cantidad === 0;
+                    const factor = stock.factor_conversion || 1;
+                    const cantidad = config.cantidad || 0;
+                    const equivalente = cantidad * factor;
 
                     return (
                       <tr
@@ -285,8 +371,11 @@ const ItemSelectionModal = ({
                         <td className="px-3 py-2 text-right">
                           <span
                             className={`text-xs px-2 py-1 rounded ${stock.cantidad > 0 ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-600"}`}
+                            title={config.tipo_venta === 'mts_ml_m2' ? `${stock.cantidad} unidades` : ''}
                           >
-                            {stock.cantidad}
+                            {config.tipo_venta === 'mts_ml_m2' && stock.factor_conversion
+                              ? `${(stock.cantidad * stock.factor_conversion).toFixed(0)} ${stock.pza || 'MTS'}`
+                              : `${stock.cantidad}`}
                           </span>
                         </td>
                         <td className="px-3 py-2">
@@ -318,28 +407,25 @@ const ItemSelectionModal = ({
                                   opt?.value,
                                 )
                               }
-                              className="react-select-container text-xs"
+                              className="proveedor-select text-xs"
                               classNamePrefix="react-select"
                               placeholder="Seleccionar"
                               isClearable
                               isDisabled={
                                 sinStock || !stock.proveedores?.length
                               }
+                              menuPortalTarget={document.body}
+                              menuShouldScrollIntoView={false}
                               styles={{
                                 control: (base) => ({
                                   ...base,
                                   minWidth: "120px",
-                                  zIndex: 99999999999,
                                 }),
                                 singleValue: (base) => ({
                                   ...base,
                                   textOverflow: "ellipsis",
                                   overflow: "hidden",
                                   whiteSpace: "nowrap",
-                                }),
-                                menu: (base) => ({
-                                  ...base,
-                                  zIndex: 99999,
                                 }),
                               }}
                             />
@@ -370,19 +456,34 @@ const ItemSelectionModal = ({
                                 }
                               }
                             }}
-                            className="react-select-container text-xs w-20"
+                            className="costo-select text-xs w-16"
                             classNamePrefix="react-select"
                             isDisabled={sinStock || !stock.proveedores?.length}
+                            menuPortalTarget={document.body}
+                            menuShouldScrollIntoView={false}
                             styles={{
-                              control: (base) => ({
-                                ...base,
-                                zIndex: 50,
-                              }),
-                              menu: (base) => ({
-                                ...base,
-                                zIndex: 99999,
-                              }),
+                              menu: (base) => ({ ...base, zIndex: 99999 }),
                             }}
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <Select
+                            options={tipoVentaOptions}
+                            value={tipoVentaOptions.find(
+                              (o) => o.value === config.tipo_venta,
+                            )}
+                            onChange={(opt) => {
+                              if (opt) {
+                                handleUpdateItem(
+                                  stock.id,
+                                  "tipo_venta",
+                                  opt.value,
+                                );
+                              }
+                            }}
+                            className="tipo-venta-select text-xs w-24"
+                            classNamePrefix="react-select"
+                            isDisabled={sinStock || !stock.proveedores?.length || !stock.factor_conversion}
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -393,11 +494,28 @@ const ItemSelectionModal = ({
                               handleCantidadChange(stock.id, e.target.value)
                             }
                             min="0"
-                            max={stock.cantidad}
+                            max={
+                              config.tipo_venta === 'mts_ml_m2' && factor > 1
+                                ? stock.cantidad * factor
+                                : stock.cantidad
+                            }
                             disabled={sinStock}
                             className={`w-16 border rounded px-2 py-1 text-sm text-center ${isSelected ? "border-green-500 bg-white" : "border-gray-300"} ${sinStock ? "bg-gray-100 cursor-not-allowed" : ""}`}
                             placeholder={sinStock ? "Sin stock" : "0"}
                           />
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {config.tipo_venta === 'mts_ml_m2' && factor > 1 ? (
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" title="Unidades reales">
+                              {Math.floor(config.cantidad / factor)} UND
+                            </span>
+                          ) : factor > 1 ? (
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                              {(config.cantidad * factor).toFixed(factor % 1 === 0 ? 0 : 2)} {stock.pza || 'MTS'}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right font-medium">
                           $

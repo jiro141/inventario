@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Modal from "../../components/Modal";
 import ConfirmModal from "../../components/ConfirmModal";
 import Select from "react-select";
 import { FaPlus, FaTrash, FaBoxOpen, FaUserPlus, FaEdit, FaTimes } from "react-icons/fa";
 import { toast } from "react-toastify";
 import { createNotaEntrega, getNotaEntrega, agregarItemNotaEntrega, eliminarItemNotaEntrega, actualizarItemNotaEntrega, aprobarNotaEntrega, cancelarNotaEntrega, getClientes, createCliente } from "../../api/controllers/Reportes";
+import { getTaza } from "../../api/controllers/Inventario";
 import ItemSelectionModal from "./ItemSelectionModal";
 
 const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
   const [loading, setLoading] = useState(false);
+  const [utilidadPorcentajes, setUtilidadPorcentajes] = useState({
+    utilidad_porcentaje_1: 0,
+    utilidad_porcentaje_2: 0,
+    utilidad_porcentaje_3: 0,
+  });
   
   // Estados para modales de confirmación
   const [confirmModal, setConfirmModal] = useState({
@@ -54,6 +60,28 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
   // Para nuevas notas (isNuevaNota = true), siempre editable
   // Para notas existentes, solo editable si está pendiente
   const isReadOnly = !isNuevaNota && notaEstado !== "pendiente";
+
+  // Cargar taza al abrir
+  useEffect(() => {
+    if (isOpen) {
+      cargarTaza();
+    }
+  }, [isOpen]);
+
+  const cargarTaza = async () => {
+    try {
+      const taza = await getTaza();
+      if (taza) {
+        setUtilidadPorcentajes({
+          utilidad_porcentaje_1: parseFloat(taza.utilidad_porcentaje_1) || 0,
+          utilidad_porcentaje_2: parseFloat(taza.utilidad_porcentaje_2) || 0,
+          utilidad_porcentaje_3: parseFloat(taza.utilidad_porcentaje_3) || 0,
+        });
+      }
+    } catch (err) {
+      console.error("Error cargando taza:", err);
+    }
+  };
 
   // Resetear formulario al abrir
   useEffect(() => {
@@ -210,6 +238,7 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
     setEditingItemForm({
       cantidad: item.cantidad,
       cual_costo: item.cual_costo,
+      tipo_venta: item.tipo_venta || 'cantidad',
       stock_proveedor: item.stock_proveedor,
     });
     // Guardar los proveedores del stock para el dropdown
@@ -258,6 +287,7 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
       const updatePayload = {
         cantidad: editingItemForm.cantidad,
         cual_costo: editingItemForm.cual_costo,
+        tipo_venta: editingItemForm.tipo_venta || 'cantidad',
       };
       
       // Solo enviar stock_proveedor si cambió
@@ -305,6 +335,7 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
           stock_proveedor: item.stock_proveedor,
           cantidad: item.cantidad,
           cual_costo: item.cual_costo,
+          tipo_venta: item.tipo_venta || 'cantidad',
         })),
       };
 
@@ -412,12 +443,32 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
   // Formatear costo para mostrar
   const formatCosto = (cualCosto) => {
     const labels = {
-      costo_1: "Costo 1",
-      costo_2: "Costo 2",
-      costo_3: "Costo 3",
+      costo_1: `${utilidadPorcentajes.utilidad_porcentaje_1}%`,
+      costo_2: `${utilidadPorcentajes.utilidad_porcentaje_2}%`,
+      costo_3: `${utilidadPorcentajes.utilidad_porcentaje_3}%`,
     };
     return labels[cualCosto] || cualCosto;
   };
+
+  // Opciones de costo dinámicas para el selector
+  const costoOptions = useMemo(() => {
+    const options = [];
+    if (utilidadPorcentajes.utilidad_porcentaje_1 > 0) {
+      options.push({ value: "costo_1", label: `${utilidadPorcentajes.utilidad_porcentaje_1}%` });
+    }
+    if (utilidadPorcentajes.utilidad_porcentaje_2 > 0) {
+      options.push({ value: "costo_2", label: `${utilidadPorcentajes.utilidad_porcentaje_2}%` });
+    }
+    if (utilidadPorcentajes.utilidad_porcentaje_3 > 0) {
+      options.push({ value: "costo_3", label: `${utilidadPorcentajes.utilidad_porcentaje_3}%` });
+    }
+    if (options.length === 0) {
+      options.push({ value: "costo_1", label: "Costo 1" });
+      options.push({ value: "costo_2", label: "Costo 2" });
+      options.push({ value: "costo_3", label: "Costo 3" });
+    }
+    return options;
+  }, [utilidadPorcentajes]);
 
   return (
     <Modal
@@ -555,7 +606,9 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
                       <th className="px-2 py-2 text-left">Descripción</th>
                       <th className="px-2 py-2 text-left">Proveedor</th>
                       <th className="px-2 py-2 text-center">Costo</th>
-                      <th className="px-2 py-2 text-right">Cantidad</th>
+                      <th className="px-2 py-2 text-center">Tipo Venta</th>
+                      <th className="px-2 py-2 text-center">Cantidad</th>
+                      <th className="px-2 py-2 text-center">Equivalente</th>
                       <th className="px-2 py-2 text-right">Precio</th>
                       <th className="px-2 py-2 text-right">Total</th>
                       {!isReadOnly && <th className="px-2 py-2"></th>}
@@ -564,10 +617,15 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
                   <tbody>
                     {displayItems.map((item) => {
                       const isEditingThis = editingItemId === (item.id || item.tempId);
-                      // Get providers for this item
                       const providers = isEditingThis && editingItemId === (item.id || item.tempId) 
                         ? editingItemStockProveedores 
                         : (item.stock_proveedores || (item.stock && item.stock.proveedores) || []);
+                      
+                      // Calcular equivalente MTS/ML/M²/KG
+                      const factor = item.stock_factor_conversion || item.factor_conversion || 1;
+                      const cantidad = item.cantidad || 0;
+                      const equivalente = cantidad * factor;
+                      const unidadEquivalente = item.stock_pza || 'MTS';
                       
                       return (
                       <tr key={item.id || item.tempId} className="border-b">
@@ -598,9 +656,9 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
                               onChange={(e) => setEditingItemForm({ ...editingItemForm, cual_costo: e.target.value })}
                               className="border rounded px-2 py-1 text-xs"
                             >
-                              <option value="costo_1">Costo 1</option>
-                              <option value="costo_2">Costo 2</option>
-                              <option value="costo_3">Costo 3</option>
+                              {costoOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
                             </select>
                           ) : (
                             <span className="bg-gray-200 px-2 py-1 rounded text-xs">
@@ -608,18 +666,39 @@ const NotaEntregaModal = ({ isOpen, onClose, nota, onSaved }) => {
                             </span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-right">
+                        <td className="px-2 py-2 text-center">
+                          {isEditingThis ? (
+                            <select
+                              value={editingItemForm.tipo_venta || 'cantidad'}
+                              onChange={(e) => setEditingItemForm({ ...editingItemForm, tipo_venta: e.target.value })}
+                              className="border rounded px-2 py-1 text-xs"
+                            >
+                              <option value="cantidad">Cantidad</option>
+                              <option value="mts_ml_m2">MTS/ML/M²</option>
+                            </select>
+                          ) : (
+                            <span className="bg-gray-200 px-2 py-1 rounded text-xs">
+                              {item.tipo_venta === 'mts_ml_m2' ? 'MTS/ML/M²' : 'Cantidad'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-center">
                           {isEditingThis ? (
                             <input
                               type="number"
                               min="1"
                               value={editingItemForm.cantidad}
                               onChange={(e) => setEditingItemForm({ ...editingItemForm, cantidad: parseInt(e.target.value) || 0 })}
-                              className="border rounded px-2 py-1 w-20 text-right"
+                              className="border rounded px-2 py-1 w-20 text-center"
                             />
                           ) : (
-                            item.cantidad
+                            <span className="text-xs">{cantidad}</span>
                           )}
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            {equivalente.toFixed(factor % 1 === 0 ? 0 : 2)} {unidadEquivalente}
+                          </span>
                         </td>
                         <td className="px-2 py-2 text-right">${item.precio_unitario_dolares}</td>
                         <td className="px-2 py-2 text-right font-medium">
