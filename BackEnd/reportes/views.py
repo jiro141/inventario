@@ -219,3 +219,27 @@ class NotaEntregaViewSet(viewsets.ModelViewSet):
                 {'error': f'Error al generar PDF: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    @action(detail=True, methods=['get'])
+    def generar_excel(self, request, pk=None):
+        """Genera un Excel de la nota de entrega"""
+        import traceback
+        from servicios.excel_service import generar_excel_nota_entrega_bytes
+        
+        nota = self.get_object()
+        
+        try:
+            excel_bytes = generar_excel_nota_entrega_bytes(nota.id)
+            
+            from django.http import HttpResponse
+            response = HttpResponse(excel_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = f'attachment; filename="nota_entrega_{nota.numero}.xlsx"'
+            return response
+        except Exception as e:
+            # Log the full error for debugging
+            print(f"Error generating Excel: {str(e)}")
+            traceback.print_exc()
+            return Response(
+                {'error': f'Error al generar Excel: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

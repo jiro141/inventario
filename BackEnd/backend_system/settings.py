@@ -26,7 +26,7 @@ SECRET_KEY = "django-insecure-q6)o)pgb$^2gf5h*a)io6va_0=6d_zp&56a!x_x+q$2t^djuza
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['sincro.pythonanywhere.com']
 
 
 # Application definition
@@ -147,7 +147,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+# Esta es la línea clave para que PythonAnywhere sepa dónde recolectar todo
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# Si tienes una carpeta de estáticos propia de tu proyecto (opcional)
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
